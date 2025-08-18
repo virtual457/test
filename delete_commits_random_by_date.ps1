@@ -89,8 +89,9 @@ if ($status -ne $null -and $status.Trim().Length -ne 0) {
 }
 
 # Ensure tree is pristine for filter-branch
+git update-index -q --refresh | Out-Null
 git reset --hard | Out-Null
-git clean -fd | Out-Null
+git clean -xfd | Out-Null
 
 # Save SHAs to a file under .git
 $listPath = Join-Path $gitDir 'drop_commits_by_date.txt'
@@ -98,18 +99,26 @@ $listPath = Join-Path $gitDir 'drop_commits_by_date.txt'
 Write-Host ("Wrote {0} SHAs to {1}" -f $dropShaSet.Count, $listPath)
 
 # Create a small bash script to handle quoting and run filter-branch
+# Prepare a clean temporary worktree to avoid dirty-tree checks
+$worktreePath = Join-Path $gitDir 'rewrite_wt'
+if (Test-Path $worktreePath) { git worktree remove --force $worktreePath 2>$null | Out-Null }
+git worktree add --detach $worktreePath HEAD | Out-Null
+
 $rewriteScript = @"
 #!/usr/bin/env bash
 set -eu
 LIST="$(git rev-parse --git-dir)/drop_commits_by_date.txt"
+WORKTREE="$(git rev-parse --git-dir)/rewrite_wt"
 export FILTER_BRANCH_SQUELCH_WARNING=1
+export GIT_PAGER=cat
+cd "$WORKTREE"
 git filter-branch --tag-name-filter cat --commit-filter '
   if grep -i -F -q "$GIT_COMMIT" "$LIST"; then
     skip_commit "$@"
   else
     git commit-tree "$@"
   fi
-' -- --all
+' -f -- --all
 "@
 
 $rewritePath = Join-Path $gitDir 'rewrite_drop_commits.sh'
@@ -124,6 +133,9 @@ try {
 } catch {
     throw "Failed to run git filter-branch. Ensure Git Bash is installed and available in PATH. Error: $($_.Exception.Message)"
 }
+
+# Clean up temporary worktree
+try { git worktree remove --force $worktreePath 2>$null | Out-Null } catch {}
 
 if ($stashed) {
     try {
