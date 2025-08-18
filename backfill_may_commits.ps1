@@ -2,7 +2,9 @@ Param(
     [int]$Year = (Get-Date).Year,
     [int]$Month = 5,
     [int]$MinCommits = 0,
-    [int]$MaxCommits = 18
+    [int]$MaxCommits = 18,
+    [int]$StartDay = 1,
+    [int]$EndDay = 0
 )
 
 # Validate inputs
@@ -25,7 +27,12 @@ if (-not $userEmail) { git config user.email "backfill@example.com" | Out-Null }
 
 $daysInMonth = [DateTime]::DaysInMonth($Year, $Month)
 
-for ($day = 1; $day -le $daysInMonth; $day++) {
+# Normalize and validate day range
+if ($EndDay -le 0) { $EndDay = $daysInMonth }
+if ($StartDay -lt 1 -or $StartDay -gt $daysInMonth) { throw "StartDay must be between 1 and $daysInMonth" }
+if ($EndDay -lt $StartDay -or $EndDay -gt $daysInMonth) { throw "EndDay must be between StartDay and $daysInMonth" }
+
+for ($day = $StartDay; $day -le $EndDay; $day++) {
     # Anchor commits around midday local time to avoid DST edge cases
     $baseTime = Get-Date -Year $Year -Month $Month -Day $day -Hour 12 -Minute 0 -Second 0 -Millisecond 0
 
@@ -46,6 +53,6 @@ for ($day = 1; $day -le $daysInMonth; $day++) {
     }
 }
 
-Write-Host ("Created backfilled commits for {0}/{1} with {2}-{3} commits per day." -f $Month, $Year, $MinCommits, $MaxCommits)
+Write-Host ("Created backfilled commits for {0}/{1} days {2}-{3} with {4}-{5} commits per day." -f $Month, $Year, $StartDay, $EndDay, $MinCommits, $MaxCommits)
 
 
